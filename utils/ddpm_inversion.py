@@ -13,16 +13,23 @@ Inversion code taken from:
 LOW_RESOURCE = True
 
 
-def invert(x0, pipe, prompt_src="", num_diffusion_steps=100, cfg_scale_src=3.5, eta=1):
+def invert(x0, pipe, prompt_src="", num_diffusion_steps=100, cfg_scale_src=3.5, eta=1, scaling_factor=0.18215, generator=None):
     #  inverts a real image according to Algorithm 1 in https://arxiv.org/pdf/2304.06140.pdf,
     #  based on the code in https://github.com/inbarhub/DDPM_inversion
     #  returns wt, zs, wts:
     #  wt - inverted latent
     #  wts - intermediate inverted latents
     #  zs - noise maps
+    #generator = generator if generator is not None else torch.Generator('cuda').manual_seed(42)
     pipe.scheduler.set_timesteps(num_diffusion_steps)
     with inference_mode():
-        w0 = (pipe.vae.encode(x0).latent_dist.mode() * 0.18215).float()
+        #print(x0.shape)
+        w0 = (pipe.vae.encode(x0).latent_dist.mode() * scaling_factor).float()
+        #w0_ = (pipe.vae.encode(x0).latent_dist.sample(generator) * scaling_factor).float()
+        #w0__ = (pipe.vae.encode(x0).latents * scaling_factor).float()
+        #print(w0.shape)
+        #print(w0_.shape)
+        #print(w0__.shape)
     wt, zs, wts = inversion_forward_process(pipe, w0, etas=eta, prompt=prompt_src, cfg_scale=cfg_scale_src,
                                             prog_bar=True, num_inference_steps=num_diffusion_steps)
     return zs, wts
@@ -35,15 +42,14 @@ def inversion_forward_process(model, x0,
                               cfg_scale=3.5,
                               num_inference_steps=50, eps=None
                               ):
-    if not prompt == "":
-        text_embeddings = encode_text(model, prompt)
-    uncond_embedding = encode_text(model, "")
+    
     timesteps = model.scheduler.timesteps.to(model.device)
     variance_noise_shape = (
         num_inference_steps,
         model.unet.in_channels,
         model.unet.sample_size,
         model.unet.sample_size)
+    #print(model.vae_scale_factor)
     if etas is None or (type(etas) in [int, float] and etas == 0):
         eta_is_zero = True
         zs = None
@@ -57,7 +63,56 @@ def inversion_forward_process(model, x0,
     t_to_idx = {int(v): k for k, v in enumerate(timesteps)}
     xt = x0
     op = tqdm(reversed(timesteps)) if prog_bar else reversed(timesteps)
+    
+    # PREPARING CONDITIONS FOR SDXL
+    if model.unet.config.addition_embed_type == "text_time":
+        height = model.default_sample_size * model.vae_scale_factor
+        width = model.default_sample_size * model.vae_scale_factor
 
+        original_size = (height, width)
+        target_size = (height, width)
+        
+        (       prompt_embeds,
+                negative_prompt_embeds,
+                pooled_prompt_embeds,
+                negative_pooled_prompt_embeds,
+        ) = model.encode_prompt(
+                prompt=prompt,
+                prompt_2=prompt,
+                device=model.device,
+                num_images_per_prompt=1,
+                do_classifier_free_guidance=True,
+                negative_prompt="",
+                negative_prompt_2="",
+                prompt_embeds=None,
+                negative_prompt_embeds=None,
+                pooled_prompt_embeds=None,
+                negative_pooled_prompt_embeds=None,
+            )
+     
+        add_time_ids = model._get_add_time_ids(
+            original_size,
+            (0,0),
+            target_size,
+            dtype=prompt_embeds.dtype,
+        )
+
+        prompt_embeds = prompt_embeds.to(model.device)
+        negative_prompt_embeds = negative_prompt_embeds.to(model.device)
+        pooled_prompt_embeds = pooled_prompt_embeds.to(model.device)
+        negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.to(model.device)
+        add_time_ids = add_time_ids.to(model.device).repeat(1, 1)
+            
+        added_cond_kwargs = {"text_embeds": pooled_prompt_embeds, "time_ids": add_time_ids}
+        added_uncond_kwargs = {"text_embeds": negative_pooled_prompt_embeds, "time_ids": add_time_ids}
+    else:
+        # PREPARING CONDITIONS FOR SD
+        if not prompt == "":
+            prompt_embeds = encode_text(model, prompt)
+        negative_prompt_embeds = encode_text(model, "")
+        added_cond_kwargs = None
+        added_uncond_kwargs = None
+    
     for t in op:
         idx = t_to_idx[int(t)]
         # 1. predict noise residual
@@ -65,9 +120,15 @@ def inversion_forward_process(model, x0,
             xt = xts[idx][None]
 
         with torch.no_grad():
-            out = model.unet.forward(xt, timestep=t, encoder_hidden_states=uncond_embedding)
+            out = model.unet.forward(xt, 
+                                     timestep=t, 
+                                     encoder_hidden_states=negative_prompt_embeds,
+                                     added_cond_kwargs=added_uncond_kwargs)
             if not prompt == "":
-                cond_out = model.unet.forward(xt, timestep=t, encoder_hidden_states=text_embeddings)
+                cond_out = model.unet.forward(xt, 
+                                              timestep=t, 
+                                              encoder_hidden_states=prompt_embeds,
+                                              added_cond_kwargs=added_cond_kwargs)
 
         if not prompt == "":
             ## classifier free guidance
@@ -126,6 +187,8 @@ def sample_xts_from_x0(model, x0, num_inference_steps=50):
     """
     # torch.manual_seed(43256465436)
     alpha_bar = model.scheduler.alphas_cumprod
+    #print("x0", x0.shape)
+    #print("unet_sample_size", model.unet.sample_size)
     sqrt_one_minus_alpha_bar = (1 - alpha_bar) ** 0.5
     alphas = model.scheduler.alphas
     betas = 1 - alphas
@@ -138,6 +201,7 @@ def sample_xts_from_x0(model, x0, num_inference_steps=50):
     timesteps = model.scheduler.timesteps.to(model.device)
     t_to_idx = {int(v): k for k, v in enumerate(timesteps)}
     xts = torch.zeros(variance_noise_shape).to(x0.device)
+    #print("xts", xts.shape)
     for t in reversed(timesteps):
         idx = t_to_idx[int(t)]
         xts[idx] = x0 * (alpha_bar[t] ** 0.5) + torch.randn_like(x0) * sqrt_one_minus_alpha_bar[t]

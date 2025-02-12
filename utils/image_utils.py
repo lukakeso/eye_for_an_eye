@@ -8,8 +8,8 @@ from config import RunConfig
 
 
 def load_images(cfg: RunConfig, save_path: Optional[pathlib.Path] = None) -> Tuple[Image.Image, Image.Image]:
-    image_style = load_size(cfg.app_image_path)
-    image_struct = load_size(cfg.struct_image_path)
+    image_style = load_size(cfg.app_image_path, size=cfg.image_size)
+    image_struct = load_size(cfg.struct_image_path, size=cfg.image_size)
     if save_path is not None:
         Image.fromarray(image_style).save(save_path / f"in_style.png")
         Image.fromarray(image_struct).save(save_path / f"in_struct.png")
@@ -17,12 +17,12 @@ def load_images(cfg: RunConfig, save_path: Optional[pathlib.Path] = None) -> Tup
 
 def load_multi_images(cfg: RunConfig, save_path: Optional[pathlib.Path] = None) -> Tuple[Image.Image, Image.Image]:
     if cfg.app_num==2:
-        style_2 = load_size(cfg.app_image_path2)
+        style_2 = load_size(cfg.app_image_path2, size=cfg.image_size)
         if save_path is not None:
             Image.style_2(style_2).save(save_path / f"style_extra_2.png")
     elif cfg.app_num==3:
-        style_2 = load_size(cfg.app_image_path2)
-        style_3 = load_size(cfg.app_image_path3)
+        style_2 = load_size(cfg.app_image_path2, size=cfg.image_size)
+        style_3 = load_size(cfg.app_image_path3, size=cfg.image_size)
         if save_path is not None:
             Image.fromarray(style_2).save(save_path / f"style_extra_2.png")
             Image.fromarray(style_3).save(save_path / f"style_extra_3.png")

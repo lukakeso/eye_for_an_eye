@@ -25,6 +25,7 @@ class Segmentor:
         forbidden_words = [word.upper() for word in ["photo", "image", "picture"]]
         self.nouns = [(i, word) for (i, (word, pos)) in enumerate(nltk.pos_tag(tokenized_prompt))
                       if pos[:2] == 'NN' and word.upper() not in forbidden_words]
+        self.cross_attention_32 = None
 
     def update_attention(self, attn, is_cross):
         res = int(attn.shape[2] ** 0.5)
@@ -100,7 +101,11 @@ class Segmentor:
         return torch.from_numpy(mask).to("cuda")
     
     def aggregate_cross_attn_map(self, idx, thres, token_idx=5):
-        attn = self.cross_attention_32[idx].unsqueeze(0)
+        if self.cross_attention_32 != None:
+            attn = self.cross_attention_32[idx].unsqueeze(0)
+        else:
+            attn = self.cross_attention_64[idx].unsqueeze(0)
+        
         attn_map = attn.mean(dim=1)  # (B, N, dim)
         B = attn_map.shape[0]
         res = int(np.sqrt(attn_map.shape[-2]))

@@ -351,13 +351,24 @@ class FreeUUNet2DConditionModel(UNet2DConditionModel):
 
             # Add the Free-U trick here!
             # Fourier Filter
+            
             if sample.shape[1] == 1280:
-                sample[:, :640] *= 1.2  # 1.1  # For SD2.1
-                sample = Fourier_filter(sample, threshold=1, scale=0.9)
+                if self.config.addition_embed_type == "text_time":
+                    # SDXL
+                    sample[:, :640] *= 1.1
+                    sample = Fourier_filter(sample, threshold=1, scale=0.6)
+                else:
+                    sample[:, :640] *= 1.2  # 1.1  # For SD2.1
+                    sample = Fourier_filter(sample, threshold=1, scale=0.9) # scale 0.9 for SD2.1
 
             if sample.shape[1] == 640:
-                sample[:, :320] *= 1.4  # 1.2  # For SD2.1
-                sample = Fourier_filter(sample, threshold=1, scale=0.2)
+                if self.config.addition_embed_type == "text_time":
+                    # SDXL
+                    sample[:, :320] *= 1.2
+                    sample = Fourier_filter(sample, threshold=1, scale=0.4)
+                else:
+                    sample[:, :320] *= 1.4  # 1.2  # For SD2.1
+                    sample = Fourier_filter(sample, threshold=1, scale=0.2) # scale 0.2 for SD2.1
 
             # if we have not reached the final block and need to forward the
             # upsample size, we do it here

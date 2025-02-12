@@ -24,7 +24,7 @@ class AppearanceTransferModel:
 
     def __init__(self, config: RunConfig, pipe: Optional[CrossImageAttentionStableDiffusionPipeline] = None):
         self.config = config
-        self.pipe = get_stable_diffusion_model() if pipe is None else pipe
+        self.pipe = get_stable_diffusion_model(config.model_path, config.controlnet_path) if pipe is None else pipe
         self.register_attention_control()
         self.segmentor = Segmentor(prompt=config.prompt, object_nouns=[config.object_noun])
         self.latents_app, self.latents_struct = None, None
@@ -34,7 +34,7 @@ class AppearanceTransferModel:
         self.enable_edit = False
         self.sam_app_mask, self.sam_struct_mask = None, None
         self.step = 0
-
+        
     def set_latents(self, latents_app: torch.Tensor, latents_struct: torch.Tensor):
         self.latents_app = latents_app
         self.latents_struct = latents_struct
@@ -51,11 +51,11 @@ class AppearanceTransferModel:
         self.image_app_mask_32 = self.image_app_mask_32.float().to(self.latents_app.device)
         self.image_struct_mask_32 = self.image_struct_mask_32.float().to(self.latents_app.device)
 
-        self.image_app_mask_64 = F.interpolate(self.image_app_mask_32.unsqueeze(dim=0), size=(64, 64), mode='nearest').squeeze()
-        self.image_struct_mask_64 = F.interpolate(self.image_struct_mask_32.unsqueeze(dim=0), size=(64, 64), mode='nearest').squeeze()
+        self.image_app_mask_64 = F.interpolate(self.image_app_mask_32.unsqueeze(dim=0), size=(self.pipe.unet.config.sample_size, self.pipe.unet.config.sample_size), mode='nearest').squeeze()
+        self.image_struct_mask_64 = F.interpolate(self.image_struct_mask_32.unsqueeze(dim=0), size=(self.pipe.unet.config.sample_size, self.pipe.unet.config.sample_size), mode='nearest').squeeze()
     
     def mask_down(self, mask: List[torch.Tensor]):
-        mask = F.interpolate(torch.tensor(mask).float().view(1,1,512,512), size=(64, 64), mode='bilinear').view(64, 64).to(self.latents_app.device)
+        mask = F.interpolate(torch.tensor(mask).float().view(1,1,self.config.image_size,self.config.image_size), size=(self.pipe.unet.config.sample_size, self.pipe.unet.config.sample_size), mode='bilinear').view(self.pipe.unet.config.sample_size, self.pipe.unet.config.sample_size).to(self.latents_app.device)
         return mask
 
     def get_adain_callback(self):
@@ -66,12 +66,12 @@ class AppearanceTransferModel:
                 masks = self.segmentor.get_object_masks()
                 self.set_masks(masks)
             
-            if self.config.feat_range.start <= self.step < self.config.feat_range.end and self.config.do_cross_mask==True:
+            if self.config.feat_range.start <= self.step <= self.config.feat_range.end and self.config.do_cross_mask==True:
                 masks = self.segmentor.cross_attn_map(thres=self.config.cross_thres)
                 self.set_masks_32(masks)
 
             # Apply AdaIN operation using the computed masks
-            if self.config.adain_range.start-1 <= self.step < self.config.adain_range.end+1:                
+            if self.config.adain_range.start <= self.step <= self.config.adain_range.end:                
                 if self.config.use_masked_adain:
                     if self.config.mask_use==False:
                         latents[0] = masked_adain(latents[0], latents[1], self.image_struct_mask_64, self.image_app_mask_64)
@@ -119,8 +119,8 @@ class AppearanceTransferModel:
             def matching_feature(self, x, only_match_out=False, mask_lst=None):
                 feature_h, feature_w = int(math.sqrt(x.shape[1])), int(math.sqrt(x.shape[1]))
                 if mask_lst:
-                    style_mask = F.interpolate(torch.tensor(mask_lst[0][0]).float().view(1,1,512,512), size=(feature_h, feature_w), mode='bilinear').view(feature_h, feature_w).unsqueeze(-1).repeat(1, 1, x.shape[2]).to(x.device)
-                    struct_mask = F.interpolate(torch.tensor(mask_lst[1][0]).float().view(1,1,512,512), size=(feature_h, feature_w), mode='bilinear').view(feature_h, feature_w).unsqueeze(-1).repeat(1, 1, x.shape[2]).to(x.device)
+                    style_mask = F.interpolate(torch.tensor(mask_lst[0][0]).float().view(1,1,model_self.config.image_size,model_self.config.image_size), size=(feature_h, feature_w), mode='bilinear').view(feature_h, feature_w).unsqueeze(-1).repeat(1, 1, x.shape[2]).to(x.device)
+                    struct_mask = F.interpolate(torch.tensor(mask_lst[1][0]).float().view(1,1,model_self.config.image_size,model_self.config.image_size), size=(feature_h, feature_w), mode='bilinear').view(feature_h, feature_w).unsqueeze(-1).repeat(1, 1, x.shape[2]).to(x.device)
                     
                     style_mask = rearrange(style_mask, 'h w b -> b h w') 
                     struct_mask = rearrange(struct_mask, 'h w b -> b h w') 

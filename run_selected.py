@@ -146,9 +146,9 @@ def swap_coords(coords):
 
 def show_mask(mask, ax, random_color=False):
     if random_color:
-        color = np.concatenate([np.random.random(3), np.array([0.6])], axis=0)
+        color = np.concatenate([np.random.random(3), np.array([0.4])], axis=0)
     else:
-        color = np.array([30/255, 144/255, 255/255, 0.6])
+        color = np.array([30/255, 144/255, 200/255, 0.2])
     h, w = mask.shape[-2:]
     mask_image = mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
     ax.imshow(mask_image)
@@ -170,7 +170,7 @@ def show_res(masks, scores, input_point, input_label, input_box, filename, image
         plt.figure(figsize=(10,10))
         plt.imshow(image)
         if isinstance(mask, np.ndarray):
-            show_mask(mask, plt.gca(), random_color=True)
+            show_mask(mask, plt.gca(), random_color=False)
         if input_box is not None:
             box = input_box[i]
             show_box(box, plt.gca())
@@ -201,11 +201,23 @@ def run(cfg: RunConfig) -> List[Image.Image]:
         exit()
     set_seed(cfg.seed)
     model = AppearanceTransferModel(cfg)
-    latents_app, latents_struct, noise_app, noise_struct = load_latents_or_invert_images(model=model, cfg=cfg)
-    model.set_latents(latents_app, latents_struct)
-    model.set_noise(noise_app, noise_struct)
-    print("Running appearance transfer...")
-    run_appearance_transfer(model=model, cfg=cfg)
+    #print("CN_path", cfg.controlnet_path)
+    if cfg.dataset_domain_images_path != None:
+        total_iters = len(cfg.image_pairs)
+        print("Running appearance transfer...json")
+        for itr, (domain_im1, domain_im2) in enumerate(cfg.image_pairs):
+            print(f'{itr}/{total_iters}')
+            cfg.set_images(domain_im1, domain_im2)
+            latents_app, latents_struct, noise_app, noise_struct = load_latents_or_invert_images(model=model, cfg=cfg)
+            model.set_latents(latents_app, latents_struct)
+            model.set_noise(noise_app, noise_struct)
+            run_appearance_transfer(model=model, cfg=cfg)
+    else:
+        print("Running appearance transfer...")
+        latents_app, latents_struct, noise_app, noise_struct = load_latents_or_invert_images(model=model, cfg=cfg)
+        model.set_latents(latents_app, latents_struct)
+        model.set_noise(noise_app, noise_struct)
+        run_appearance_transfer(model=model, cfg=cfg)
     print("Done.")
     #return images
 
@@ -277,7 +289,7 @@ def run_appearance_transfer(model: AppearanceTransferModel, cfg: RunConfig) -> L
         del predictor
     
     controlnet_image = None
-    if cfg.controlnet_path:
+    if False:#not(cfg.controlnet_path == None or cfg.controlnet_path == "None"):
         
         #line_processor = TEEDdetector.from_pretrained("fal-ai/teed", filename="5_model.pth")
 
@@ -336,21 +348,26 @@ def run_appearance_transfer(model: AppearanceTransferModel, cfg: RunConfig) -> L
         del line_processor
         
     #torch.cuda.empty_cache()
-    range_start_FEAT, range_end_FEAT = 0, 0
+    
     transfer_type = ["color", "material", "style"]
     generator = torch.Generator('cuda').manual_seed(cfg.seed)
     for tt in transfer_type:
         if tt == "color":
-            range_start_ADAIN, range_end_ADAIN = 0, 10
+            range_start_ADAIN, range_end_ADAIN = 0, 1
+            range_start_FEAT, range_end_FEAT = 0, 1
         elif tt == "material":
-            range_start_ADAIN, range_end_ADAIN = 90, 100
+            range_start_ADAIN, range_end_ADAIN = 101, 101 # no adain application
+            range_start_FEAT, range_end_FEAT = 0, 100
         elif tt == "style":
-            range_start_ADAIN, range_end_ADAIN = 10, 90
+            range_start_ADAIN, range_end_ADAIN = 0, 100
+            range_start_FEAT, range_end_FEAT = 0, 100
         else:
             raise NotImplementedError(f'{tt} transfer type not implemented')
-    
-    
-    
+        
+        save_name = cfg.output_path / f"out_transfer---seed_{cfg.seed}__TRANSFER_{tt}.png"
+
+        if os.path.isfile(save_name):
+            continue
     # for range_start_ADAIN in range(0,101,20):
     #     for range_end_ADAIN in range(0,101,20):
     #         for range_start_FEAT in range(0,101,20):
@@ -365,23 +382,11 @@ def run_appearance_transfer(model: AppearanceTransferModel, cfg: RunConfig) -> L
     #                 if range_start_FEAT > range_end_FEAT or range_start_ADAIN > range_end_ADAIN:
     #                     continue
         #cfg.cross_attn_64_range = Range(start=range_start_FEAT, end=range_end_FEAT)
-        
-        # "13196_00.jpg", # leather
-        # "11985_00.jpg", # furry
-        # "10084_00.jpg", # transparent
-        # "10165_00.jpg", # silky / shiny
-        # "11028_00.jpg", # semish
-        # "11401_00.jpg", # normal shirt
-        # "11412_00.jpg", # denim
-        # "11767_00.jpg", # crystals
-        # "01985_00.jpg", # wavy sleeves
-        # "03268_00.jpg", # wovern material
-        
         torch.cuda.empty_cache()
         cfg.adain_range = Range(start=range_start_ADAIN, end=range_end_ADAIN)
         model.config.adain_range = Range(start=range_start_ADAIN, end=range_end_ADAIN)
-        cfg.feat_range = Range(start=range_start_FEAT, end=range_end_ADAIN)
-        model.config.feat_range = Range(start=range_start_FEAT, end=range_end_ADAIN)
+        cfg.feat_range = Range(start=range_start_FEAT, end=range_end_FEAT)
+        model.config.feat_range = Range(start=range_start_FEAT, end=range_end_FEAT)
         images = model.pipe(
             prompt=[cfg.prompt] * 3,
             image = controlnet_image,
@@ -399,7 +404,7 @@ def run_appearance_transfer(model: AppearanceTransferModel, cfg: RunConfig) -> L
         ).images
 
     # Save images  
-        images[0].save(cfg.output_path / f"out_transfer---seed_{cfg.seed}__TRANSFER_{tt}.png")
+        images[0].save(save_name)
         
     #images[0].save(cfg.output_path / f"out_transfer---seed_{cfg.seed}.png")
     #images[1].save(cfg.output_path / f"out_style---seed_{cfg.seed}.png")
