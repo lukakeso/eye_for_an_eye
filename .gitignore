@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyc
 
 # C extensions
 *.so
@@ -129,8 +130,17 @@ cython_debug/
 
 .idea/
 
-sam_hq
+ChamferDistancePytorch/
+sam-hq/
 sam_hq_vit_l.pth
 TOKEN
 output
 #appearance_transfer_model_final.py
+
+# Other
+slurm_files/
+checkpoints/
+datasets/
+results/
+*.jpg
+*.png

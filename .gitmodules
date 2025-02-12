@@ -1,0 +1,6 @@
+[submodule "sam-hq"]
+	path = sam-hq
+	url = https://github.com/SysCV/sam-hq.git
+[submodule "ChamferDistancePytorch"]
+	path = ChamferDistancePytorch
+	url = https://github.com/ThibaultGROUEIX/ChamferDistancePytorch

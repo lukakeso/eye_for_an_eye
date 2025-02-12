@@ -3,13 +3,13 @@ matplotlib-inline==0.1.6
 jupyter==1.0.0
 numpy==1.24.1
 pyrallis==0.3.1
-torch==2.0.1
-torchvision==0.15.2
+torch==2.1.0
+torchvision==0.16.0
 diffusers==0.19.3
 transformers==4.30.2
 accelerate==0.20.3
 huggingface-hub==0.16.4
-xformers==0.0.21
+xformers==0.0.22.post4
 tokenizers==0.13.3
 nltk==3.8.1
 Pillow==10.1.0
