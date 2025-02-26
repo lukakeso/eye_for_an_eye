@@ -12,6 +12,7 @@ from utils.ddpm_inversion import invert
 
 
 def load_latents_or_invert_images(model: AppearanceTransferModel, cfg: RunConfig):
+    model.enable_edit = False  # Deactivate the cross-image attention layers
     if cfg.load_latents:
         if cfg.app_latent_save_path.exists():
             print("Loading existing latents...")
@@ -38,8 +39,8 @@ def load_latents_or_invert_images(model: AppearanceTransferModel, cfg: RunConfig
                                                                              struct_image=struct_image,
                                                                              sd_model=model.pipe,
                                                                              cfg=cfg)
-        model.enable_edit = True
-        print("Done Loading.")
+    model.enable_edit = True
+    print("Done Loading.")
     return latents_app, latents_struct, noise_app, noise_struct
 
 def load_single_latent(latent_save_path: Path) -> torch.Tensor:
