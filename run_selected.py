@@ -367,6 +367,7 @@ def run_appearance_transfer(model: AppearanceTransferModel, cfg: RunConfig) -> L
         save_name = cfg.output_path / f"out_transfer---seed_{cfg.seed}__TRANSFER_{tt}.png"
 
         if os.path.isfile(save_name):
+            print(save_name)
             continue
     # for range_start_ADAIN in range(0,101,20):
     #     for range_end_ADAIN in range(0,101,20):
@@ -405,6 +406,7 @@ def run_appearance_transfer(model: AppearanceTransferModel, cfg: RunConfig) -> L
 
     # Save images  
         images[0].save(save_name)
+        print(save_name)
         
     #images[0].save(cfg.output_path / f"out_transfer---seed_{cfg.seed}.png")
     #images[1].save(cfg.output_path / f"out_style---seed_{cfg.seed}.png")

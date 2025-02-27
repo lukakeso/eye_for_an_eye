@@ -132,6 +132,7 @@ cython_debug/
 
 ChamferDistancePytorch/
 sam-hq/
+sam_hq/
 sam_hq_vit_l.pth
 TOKEN
 output

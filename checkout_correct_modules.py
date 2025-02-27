@@ -23,3 +23,5 @@ run_command("git submodule update --init --recursive", cwd=repo_root)
 run_command(f"git checkout {sam_hq_commit_hash}", cwd=sam_hq_dir)
 
 run_command(f"git checkout {chamfer_distance_commit_hash}", cwd=chamfer_dir)
+
+run_command("mv sam-hq sam_hq", cwd=repo_root)
